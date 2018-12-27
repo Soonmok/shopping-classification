@@ -268,7 +268,7 @@ class Data:
         train_size = int(np.count_nonzero(train_indices))
         return train_indices, train_size
 
-    def make_db(self, data_name, output_dir='data/train', train_ratio=0.8):
+    def make_db(self, data_name, output_dir='/media/kakao/Kakao-arena/data/train', train_ratio=0.8):
         if data_name == 'train':
             div = 'train'
             data_path_list = opt.train_data_list
