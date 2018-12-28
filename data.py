@@ -42,6 +42,9 @@ class Reader(object):
         self.begin_offset = begin_offset
         self.end_offset = end_offset
 
+    # 현재 데이터의 인덱스가 chunk offset 범위안에 있는지 여부를 따짐
+    # input --> ex) 20034
+    # output --> ex) True (현재 begin_offset이 20000, 현재 end_offset이 40000일 경우)
     def is_range(self, i):
         if self.begin_offset is not None and i < self.begin_offset:
             return False
@@ -49,6 +52,7 @@ class Reader(object):
             return False
         return True
 
+    # 가져온 데이터의 총 크기 계산 뒤 반환
     def get_size(self):
         offset = 0
         count = 0
@@ -71,6 +75,7 @@ class Reader(object):
             offset += sz
         return count
 
+    # 해당하는 인덱스의 데이터 클래스 반환 -> ex) '133>244>5>1'
     def get_class(self, h, i):
         b = h['bcateid'][i]
         m = h['mcateid'][i]
@@ -78,6 +83,9 @@ class Reader(object):
         d = h['dcateid'][i]
         return '%s>%s>%s>%s' % (b, m, s, d)
 
+    # 해당하는 데이터 chunk(split으로 나누어진 데이터)의 class(분류 카테고리)를 h5py파일에서 가져옴
+    # input --> ex) None
+    # ouput --> ex) None  --> 왜냐면 yield로 지속적으로 변수를 업데이트하고있어서 리턴할 필요 x
     def generate(self):
         offset = 0
         for data_path in self.data_path_list:
@@ -95,6 +103,9 @@ class Reader(object):
                 yield h['pid'][i], class_name, h, i
             offset += sz
 
+    # {클래스 이름 : 키값} y_vocab 해쉬 생성 
+    # input --> ex) 'data/train'
+    # output --> ex) {'133>2224>1>2' : 1232}
     def get_y_vocab(self, data_path):
         y_vocab = {}
         h = h5py.File(data_path, 'r')[self.div]
@@ -106,7 +117,7 @@ class Reader(object):
         return y_vocab
 
 
-def preprocessing(data):
+def preprocessing_helper(data):
     try:
         cls, data_path_list, div, out_path, begin_offset, end_offset = data
         data = cls()
@@ -116,7 +127,10 @@ def preprocessing(data):
         raise Exception("".join(traceback.format_exception(*sys.exc_info())))
 
 
-def build_y_vocab(data):
+# data경로와 종류를 받아 그 데이터들에 해당하는 y_vocab 생성
+# input --> ex) ('data/train', 'train')
+# output --> ex) 
+def build_y_vocab_helper(data):
     try:
         data_path, div = data
         reader = Reader([], div, None, None)
@@ -133,13 +147,17 @@ class Data:
     def __init__(self):
         self.logger = get_logger('data')
 
+    # 제공되는 pickle에서 카테고리 vocab(모음집) 가져옴 (pickle 모르면 검색 ㄱ)
+    # y_vocab --> ex) {'14>13>235>-1': 0, '51>545>-1>-1': 1, ......}
+    # '14>13>235>-1' --> 14 = 대분류, 13 = 중분류 ... 
     def load_y_vocab(self):
         self.y_vocab = cPickle.loads(open(self.y_vocab_path, 'rb').read())
 
+    # 비동기식으로 build_y_vocab_helper 함수를 이용하여 전체 데이터의 y_vocab를 생성함
     def build_y_vocab(self):
         pool = Pool(opt.num_workers)
         try:
-            rets = pool.map_async(build_y_vocab,
+            rets = pool.map_async(build_y_vocab_helper,
                                   [(data_path, 'train')
                                    for data_path in opt.train_data_list]).get(99999999)
             pool.close()
@@ -156,6 +174,9 @@ class Data:
         self.logger.info('size of y vocab: %s' % len(self.y_vocab))
         cPickle.dump(self.y_vocab, open(self.y_vocab_path, 'wb'), 2)
 
+    # 해당 데이터 경로에 있는 모든 데이터를 일정 크기로 나누기 위한 index 처리 (데이터를 나누는게 아니라 개수 파악)
+    # input --> ex) "/data/train", "train", 20000
+    # output --> ex) [(0, 20000), (20001, 40000), ..... (total_size - 20000, total_size)] 
     def _split_data(self, data_path_list, div, chunk_size):
         total = 0
         for data_path in data_path_list:
@@ -166,6 +187,7 @@ class Data:
                   for i in range(0, total, chunk_size)]
         return chunks
 
+    # 해당되는 데이터 chunk를 읽어와서 parse_data함수로 processing 처리
     def preprocessing(self, data_path_list, div, begin_offset, end_offset, out_path):
         self.div = div
         reader = Reader(data_path_list, div, begin_offset, end_offset)
@@ -179,13 +201,16 @@ class Data:
         open(out_path, 'wb').write(cPickle.dumps(rets, 2))
         self.logger.info('%s ~ %s done. (size: %s)' % (begin_offset, end_offset, end_offset - begin_offset))
 
+    # split_data로 나누어진 데이터들을 비동기적으로 preprocessing 처리함
+    # input --> ex) Data(class), "data/train", "train", 20000
+    # output --> ex) 47 (나누어진 데이터 chunk 갯수)
     def _preprocessing(self, cls, data_path_list, div, chunk_size):
         chunk_offsets = self._split_data(data_path_list, div, chunk_size)
         num_chunks = len(chunk_offsets)
         self.logger.info('split data into %d chunks, # of classes=%s' % (num_chunks, len(self.y_vocab)))
         pool = Pool(opt.num_workers)
         try:
-            pool.map_async(preprocessing, [(cls,
+            pool.map_async(preprocessing_helper, [(cls,
                                             data_path_list,
                                             div,
                                             self.tmp_chunk_tpl % cidx,
@@ -200,6 +225,12 @@ class Data:
             raise
         return num_chunks
 
+    # TODO: 임베딩 하는 방식을 바꾸어 볼수 있음 
+
+    # 해당하는 label에 대한 데이터 쌍을 꺼내서 해당되는 x, y processing하고 리턴함
+    # input --> ex) '14>13>235>-1', h(h5py 파일), 34(index)
+    # output --> ex) 5, ([132, 22, 115, 223, ...], [22, 155, 223, 444, ...])
+    # 5 = 카테고리 값, [132, 22, 115, 223, ...] = 단어들의 해쉬값(순서 많이나온 순), [22, 155, 223, 444, ...] = 앞 벡터 한칸 뒤로 민것 
     def parse_data(self, label, h, i):
         Y = self.y_vocab.get(label)
         if Y is None and self.div in ['dev', 'test']:
@@ -229,6 +260,9 @@ class Data:
             v[i] = xv[i][1]
         return Y, (x, v)
 
+    # h5py 형식의 데이터 셋 초기화 (4가지 종류의 데이터셋)
+    # input --> ex) train_group, 16000, len(y_vocab) 
+    # output --> None (train_group에 데이터셋 초기화)
     def create_dataset(self, g, size, num_classes):
         shape = (size, opt.max_len)
         g.create_dataset('uni', shape, chunks=True, dtype=np.int32)
@@ -263,11 +297,21 @@ class Data:
         if with_pid_field:
             A['pid'][offset:offset + num] = B['pid'][:num]
 
+    # train_ratio만큼의 데이터를 뽑기위해 train_indices 랜덤으로 설정하고 그 크기를 반환
+    # input --> ex) 20000, 0.8
+    # output --> ex) [True, False, True, True, False ...], 16000
     def get_train_indices(self, size, train_ratio):
         train_indices = np.random.rand(size) < train_ratio
         train_size = int(np.count_nonzero(train_indices))
         return train_indices, train_size
 
+
+    # 데이터들을 가져와서 학습 및 테스트용 데이터 베이스를 생성 
+    # input --> ex) train (db 이름)
+    # output --> ex) dataset (hash)
+    # dataset['uni'] == 단어 임베딩 --> ex) [132, 22, 115, 223, ...]
+    # dataset['w_uni'] == 단어 임베딩 --> ex) [22, 115, 223, 444, ...]
+    # dataset['cate'] == 카테고리 종류 --> ex) [0, 0, 0, 1, 0, 0, 0, ...]
     def make_db(self, data_name, output_dir='/media/kakao/Kakao-arena/data/train', train_ratio=0.8):
         if data_name == 'train':
             div = 'train'
@@ -342,10 +386,10 @@ class Data:
                     continue
                 c = chunk['train'] if is_train else chunk['dev']
                 idx = c['num']
-                c['uni'][idx] = v
-                c['w_uni'][idx] = w
-                c['cate'][idx] = y
-                c['num'] += 1
+                c['uni'][idx] = v # 단어 임베딩_1 (parse_data 함수 참고)
+                c['w_uni'][idx] = w # 단어 임베딩_2 (parse_data 함수 참고)
+                c['cate'][idx] = y # 카테고리 y값 ex) [0,0,0,1,0,0,0,0,....]
+                c['num'] += 1 # 
                 if not is_train:
                     c['pid'].append(np.string_(pid))
                 for t in ['train', 'dev']:
@@ -383,5 +427,6 @@ class Data:
 
 if __name__ == '__main__':
     data = Data()
+    # cli 에서 data.make_db 함수를 쓸수 있게 함 (google python-fire 참고)
     fire.Fire({'make_db': data.make_db,
                'build_y_vocab': data.build_y_vocab})
