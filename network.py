@@ -36,26 +36,38 @@ class TextOnly:
     def __init__(self):
         self.logger = get_logger('textonly')
 
+    # input1(embeded) * input2(reshaped) --> dropout --> dense layer -> output
     def get_model(self, num_classes, activation='sigmoid'):
         max_len = opt.max_len
         voca_size = opt.unigram_hash_size + 1
 
         with tf.device('/gpu:0'):
+            # voca_size = 32
+            # embd_size = 128
             embd = Embedding(voca_size,
                              opt.embd_size,
                              name='uni_embd')
 
+            # (None, 32)
             t_uni = Input((max_len,), name="input_1")
+            # (None, 32, 128)
             t_uni_embd = embd(t_uni)  # token
 
+            # (None, 32)
             w_uni = Input((max_len,), name="input_2")
+            # (None, 32, 1)
             w_uni_mat = Reshape((max_len, 1))(w_uni)  # weight
 
+            # (None, 128, 1)
             uni_embd_mat = dot([t_uni_embd, w_uni_mat], axes=1)
+            # (None, 128)
             uni_embd = Reshape((opt.embd_size, ))(uni_embd_mat)
 
+            # (None, 128)
             embd_out = Dropout(rate=0.5)(uni_embd)
+            # (None, 128)
             relu = Activation('relu', name='relu1')(embd_out)
+            # (None, 4215)
             outputs = Dense(num_classes, activation=activation)(relu)
             model = Model(inputs=[t_uni, w_uni], outputs=outputs)
             optm = keras.optimizers.Nadam(opt.lr)
