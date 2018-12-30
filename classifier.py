@@ -43,6 +43,10 @@ class Classifier():
         self.logger = get_logger('Classifier')
         self.num_classes = 0
 
+    # train data와 label 데이터를 생성한다. (batch size만큼 나누어서 작업하여 전체를 생성)
+    # input --> None, output --> None // dataset 생성
+    # train_data --> ex) X = [dataset['uni'][i : i+batch], dataset['w_uni'][i : i+batch]] == [[144, 22, 33, 11, ...], [22, 33, 11, ...]]
+    # label_data --> ex) Y = dataset['cate'][i : i+batch] == ['22>33>44>55']
     def get_sample_generator(self, ds, batch_size, raise_stop_event=False):
         left, limit = 0, ds['uni'].shape[0]
         while True:
@@ -56,12 +60,22 @@ class Classifier():
                 if raise_stop_event:
                     raise StopIteration
 
+    # cate1.json --> inv_cate1 (value : key 순서를 바꿈)
+    # cate1.json --> ex) { b: 
+    #                       {"전자기기": 1, "가구": 2 ...},
+    #                      m: 
+    #                       {"중분류1: 34" ...} ...}
+    # inv_cate1 --> ex) { b: 
+    #                       {1: "전자기기", 2: "가구" ...},
+    #                     m:
+    #                       {34: "중분류1" ...} ...}
     def get_inverted_cate1(self, cate1):
         inv_cate1 = {}
         for d in ['b', 'm', 's', 'd']:
             inv_cate1[d] = {v: k for k, v in six.iteritems(cate1[d])}
         return inv_cate1
 
+    # '{pid}\t{b}\t{m}\t{s}\t{d}' 예측된 카테고리값 출력
     def write_prediction_result(self, data, pred_y, meta, out_path, readable):
         pid_order = []
         for data_path in DEV_DATA_LIST:
@@ -98,6 +112,7 @@ class Classifier():
                 fout.write(ans)
                 fout.write('\n')
 
+    # test.h5py 파일 읽어와서 학습한 모델로 예측한 결과값 출력
     def predict(self, data_root, model_root, test_root, test_div, out_path, readable=False):
         meta_path = os.path.join(data_root, 'meta')
         meta = cPickle.loads(open(meta_path, 'rb').read())
@@ -124,6 +139,9 @@ class Classifier():
                 pbar.update(X[0].shape[0])
         self.write_prediction_result(test, pred_y, meta, out_path, readable=readable)
 
+    # network.py 에 있는 TextOnly 클래스의 모델을 불러와서 학습시킴
+    # input --> "/media/kakao/Kakao-arena/data/train", model/train
+    # output --> 학습된 모델 --> model/train 경로
     def train(self, data_root, out_dir):
         data_path = os.path.join(data_root, 'data.h5py')
         meta_path = os.path.join(data_root, 'meta')
