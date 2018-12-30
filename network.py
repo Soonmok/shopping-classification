@@ -76,3 +76,39 @@ class TextOnly:
                         metrics=[top1_acc])
             model.summary(print_fn=lambda x: self.logger.info(x))
         return model
+
+class OnlyImage:
+    def __init__(self):
+        self.logger = get_logger("imageOnly")
+
+    def get_model(self, num_classes, activation='sigmoid'):
+        #TODO: 이미지 피쳐 shape 일치 시키기 받아서 (None, num_classes) output 반환 
+        with tf.device('/gpu:0'):
+            img_feature = Input((100), name="image_input")
+            relu = Activation('relu', name='relu1')(embd_out)
+            outputs = Dense(num_classes, activation=activation)(relu)
+            model = model(inputs=img_feature, outputs=outputs)
+            optm - keras.optimizers.Nadam(opt, lr)
+            model.compile(loss='binary_crossentropy',
+                            optimizer=optm,
+                            metrics=[top1_acc])
+        return model
+
+
+class TwoBranch:
+    def __init__(self):
+        self.logger = get_logger("TwoBranch")
+    def get_model(self, num_classes, Activation="sigmoid"):
+        
+        #TODO: 이미지 피쳐와 텍스트 피쳐를 각각 Dense 로 처리한뒤 concat 한것을 다시 Dense 로 통과 시킨것을 outputs으로 (논문 적용)
+        with tf.device('/gpu:0'):
+            img_feature = Input((100, name="image_input"))
+            text_feature = Input((32, name="text_input"))
+            relu = Activation('relu', name='relu1')(mixed_feature)
+            outputs = Dense(num_classes, activation=Activation)(relu)
+            model = Model(inputs=mixed_feature, outputs=outputs)
+            model.compile(loss='binary_crossentropy',
+                optimizer=optm,
+                metrics=[top1_acc])
+        
+        return model
