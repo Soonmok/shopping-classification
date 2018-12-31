@@ -28,7 +28,7 @@ from keras.callbacks import ModelCheckpoint
 from six.moves import zip, cPickle
 
 from misc import get_logger, Option
-from network import TextOnly, top1_acc
+from network import TextOnly, OnlyImage, top1_acc
 
 opt = Option('./config.json')
 if six.PY2:
@@ -52,6 +52,19 @@ class Classifier():
         while True:
             right = min(left + batch_size, limit)
             X = [ds[t][left:right, :] for t in ['uni', 'w_uni']]
+            Y = ds['cate'][left:right]
+            yield X, Y
+            left = right
+            if right == limit:
+                left = 0
+                if raise_stop_event:
+                    raise StopIteration
+
+    def get_img_sample_generator(self, ds, batch_size, raise_stop_event=False):
+        left, limit = 0, ds['img_feat'].shape[0]
+        while True:
+            right = min(left + batch_size, limit)
+            X = ds['img_feat'][left:right]
             Y = ds['cate'][left:right]
             yield X, Y
             left = right
@@ -128,11 +141,12 @@ class Classifier():
         test = test_data[test_div]
         batch_size = opt.batch_size
         pred_y = []
-        test_gen = ThreadsafeIter(self.get_sample_generator(test, batch_size, raise_stop_event=True))
-        total_test_samples = test['uni'].shape[0]
+        # test_gen = ThreadsafeIter(self.get_sample_generator(test, batch_size, raise_stop_event=True))
+        test_gen = ThreadsafeIter(self.get_img_sample_generator(test, batch_size, raise_stop_event=True))
+        total_test_samples = test['img_feat'].shape[0]
         with tqdm.tqdm(total=total_test_samples) as pbar:
             for chunk in test_gen:
-                total_test_samples = test['uni'].shape[0]
+                total_test_samples = test['img_feat'].shape[0]
                 X, _ = chunk
                 _pred_y = model.predict(X)
                 pred_y.extend([np.argmax(y) for y in _pred_y])
@@ -164,17 +178,25 @@ class Classifier():
         checkpoint = ModelCheckpoint(self.weight_fname, monitor='val_loss',
                                      save_best_only=True, mode='min', period=10)
 
-        textonly = TextOnly()
-        model = textonly.get_model(self.num_classes)
+        # textonly = TextOnly()
+        # model = textonly.get_model(self.num_classes)
+        img_only = OnlyImage()
+        model = img_only.get_model(self.num_classes)
 
-        total_train_samples = train['uni'].shape[0]
-        train_gen = self.get_sample_generator(train,
-                                              batch_size=opt.batch_size)
+        # total_train_samples = train['uni'].shape[0]
+        total_train_samples = train['img_feat'].shape[0]
+        # train_gen = self.get_sample_generator(train,
+        #                                       batch_size=opt.batch_size)
+        train_gen = self.get_img_sample_generator(train,
+                                                batch_size=opt.batch_size)
         self.steps_per_epoch = int(np.ceil(total_train_samples / float(opt.batch_size)))
 
-        total_dev_samples = dev['uni'].shape[0]
-        dev_gen = self.get_sample_generator(dev,
-                                            batch_size=opt.batch_size)
+        # total_dev_samples = dev['uni'].shape[0]
+        total_dev_samples = dev['img_feat'].shape[0]
+        # dev_gen = self.get_sample_generator(dev,
+        #                                     batch_size=opt.batch_size)
+        dev_gen = self.get_img_sample_generator(dev,
+                                                batch_size=opt.batch_size)
         self.validation_steps = int(np.ceil(total_dev_samples / float(opt.batch_size)))
 
         model.fit_generator(generator=train_gen,

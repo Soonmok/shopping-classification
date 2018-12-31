@@ -84,8 +84,9 @@ class OnlyImage:
     def get_model(self, num_classes, activation='sigmoid'):
         #TODO: 이미지 피쳐 shape 일치 시키기 받아서 (None, num_classes) output 반환 
         with tf.device('/gpu:0'):
-            img_feature = Input((100), name="image_input")
-            relu = Activation('relu', name='relu1')(embd_out)
+            img_feature = Input((2048), name="image_input")
+            drop_out = Dropout(rate=0.5)(img_feature)
+            relu = Activation('relu', name='relu1')(drop_out)
             outputs = Dense(num_classes, activation=activation)(relu)
             model = model(inputs=img_feature, outputs=outputs)
             optm - keras.optimizers.Nadam(opt, lr)
@@ -102,7 +103,7 @@ class TwoBranch:
         
         #TODO: 이미지 피쳐와 텍스트 피쳐를 각각 Dense 로 처리한뒤 concat 한것을 다시 Dense 로 통과 시킨것을 outputs으로 (논문 적용)
         with tf.device('/gpu:0'):
-            img_feature = Input((100, name="image_input"))
+            img_feature = Input((2048, name="image_input"))
             text_feature = Input((32, name="text_input"))
             relu = Activation('relu', name='relu1')(mixed_feature)
             outputs = Dense(num_classes, activation=Activation)(relu)
