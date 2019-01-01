@@ -225,7 +225,7 @@ class Data:
             raise
         return num_chunks
 
-    # TODO: 임베딩 하는 방식을 바꾸어 볼수 있음 
+    # TODO: 임베딩 하는 방식을 바꾸어 볼수 있음 (kor_char_parser preprocessing 함수 이용하여 반영하기)
 
     # 해당하는 label에 대한 데이터 쌍을 꺼내서 해당되는 x, y processing하고 리턴함
     # input --> ex) '14>13>235>-1', h(h5py 파일), 34(index)

@@ -18,8 +18,10 @@ import tensorflow as tf
 import keras
 from keras.models import Model
 from keras.layers.merge import dot
-from keras.layers import Dense, Input
+from keras.layers import Dense, Input, Concatenate, Flatten, Dropout
 from keras.layers.core import Reshape
+from keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
+from keras.optimizers import Adam
 
 from keras.layers.embeddings import Embedding
 from keras.layers.core import Dropout, Activation
@@ -82,18 +84,55 @@ class OnlyImage:
         self.logger = get_logger("imageOnly")
 
     def get_model(self, num_classes, activation='sigmoid'):
-        #TODO: 이미지 피쳐 shape 일치 시키기 받아서 (None, num_classes) output 반환 
         with tf.device('/gpu:0'):
             img_feature = Input((2048), name="image_input")
             drop_out = Dropout(rate=0.5)(img_feature)
             relu = Activation('relu', name='relu1')(drop_out)
             outputs = Dense(num_classes, activation=activation)(relu)
             model = model(inputs=img_feature, outputs=outputs)
-            optm - keras.optimizers.Nadam(opt, lr)
+            optm = keras.optimizers.Nadam(opt.lr)
             model.compile(loss='binary_crossentropy',
                             optimizer=optm,
                             metrics=[top1_acc])
+            model.summary(print_fn=lambda x: self.logger.info(x))
         return model
+
+class TextCnn:
+    def __init__(self):
+        self.logger = get_logger("TextCnn")
+
+    def get_model(self, num_classes, activation="sigmoid"):
+        sequence_length = 200 # x.shape[1] 
+        character_size = 251 # 251
+        embedding_dim = 256
+        filter_sizes = [3,4,5]
+        num_filters = 512
+        drop = 0.5
+
+        #text 를 임베딩 시키고 cnn layer로 통과시킴
+        with tf.device('/gpu:0'):
+            inputs = Input(shape=(sequence_length,), dtype='int32')
+            embedding = Embedding(input_dim=character_size, output_dim=embedding_dim, input_length=sequence_length)(inputs)
+            reshape = Reshape((sequence_length,embedding_dim,1))(embedding)
+
+            conv_0 = Conv2D(num_filters, kernel_size=(filter_sizes[0], embedding_dim), padding='valid', kernel_initializer='normal', activation='relu')(reshape)
+            conv_1 = Conv2D(num_filters, kernel_size=(filter_sizes[1], embedding_dim), padding='valid', kernel_initializer='normal', activation='relu')(reshape)
+            conv_2 = Conv2D(num_filters, kernel_size=(filter_sizes[2], embedding_dim), padding='valid', kernel_initializer='normal', activation='relu')(reshape)
+
+            maxpool_0 = MaxPool2D(pool_size=(sequence_length - filter_sizes[0] + 1, 1), strides=(1,1), padding='valid')(conv_0)
+            maxpool_1 = MaxPool2D(pool_size=(sequence_length - filter_sizes[1] + 1, 1), strides=(1,1), padding='valid')(conv_1)
+            maxpool_2 = MaxPool2D(pool_size=(sequence_length - filter_sizes[2] + 1, 1), strides=(1,1), padding='valid')(conv_2)
+
+            concatenated_tensor = Concatenate(axis=1)([maxpool_0, maxpool_1, maxpool_2])
+            flatten = Flatten()(concatenated_tensor)
+            dropout = Dropout(drop)(flatten)
+            output = Dense(units=num_classes, activation='softmax')(dropout)
+            model = Model(inputs=inputs, outputs=output)
+            model.compile(optimizer=Adam(lr=1e-4), loss='binary_crossentropy', metrics=[top1_acc])
+            model.summary(print_fn=lambda x: self.logger.info(x))
+
+        return model
+
 
 
 class TwoBranch:

@@ -17,6 +17,9 @@ CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFT
 OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
+import os
+
+import numpy as np
 
 cho = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"  # len = 19
 jung = "ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ"  # len = 21
@@ -28,7 +31,6 @@ hangul_length = len(cho) + len(jung) + len(jong)  # 67
 
 def is_valid_decomposition_atom(x):
     return x in test
-
 
 def decompose(x):
     in_char = x
@@ -96,3 +98,23 @@ def decompose_str_as_one_hot(string, warning=True):
     for x in string:
         tmp_list.extend(decompose_as_one_hot(ord(x), warning=warning))
     return tmp_list
+
+def preprocess(data: list, max_length: int):
+    """
+     입력을 받아서 딥러닝 모델이 학습 가능한 포맷으로 변경하는 함수입니다.
+     기본 제공 알고리즘은 char2vec이며, 기본 모델이 MLP이기 때문에, 입력 값의 크기를 모두 고정한 벡터를 리턴합니다.
+     문자열의 길이가 고정값보다 길면 긴 부분을 제거하고, 짧으면 0으로 채웁니다.
+    :param data: 문자열 리스트 ([문자열1, 문자열2, ...])
+    :param max_length: 문자열의 최대 길이
+    :return: 벡터 리스트 ([[0, 1, 5, 6], [5, 4, 10, 200], ...]) max_length가 4일 때
+    """
+    vectorized_data = [decompose_str_as_one_hot(datum, warning=False) for datum in data]
+    zero_padding = np.zeros((len(data), max_length), dtype=np.int32)
+    for idx, seq in enumerate(vectorized_data):
+        length = len(seq)
+        if length >= max_length:
+            length = max_length
+            zero_padding[idx, :length] = np.array(seq)[:length]
+        else:
+            zero_padding[idx, :length] = np.array(seq)
+    return zero_padding
